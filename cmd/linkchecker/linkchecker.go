@@ -7,7 +7,9 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
+	"time"
 )
 
 type CheckResult struct {
@@ -31,6 +33,7 @@ func main() {
 	linksChecked = make(map[string]CheckResult)
 
 	// Download the root page.
+	start := time.Now()
 	err, b, _ := download(link)
 	if err != nil {
 		log.Fatal(err)
@@ -39,6 +42,32 @@ func main() {
 
 	// Recurse through the rest of the site.
 	recurse(link, b)
+
+	// Summarize results.
+	var fives, fours, threes, twos, errors int
+	for _, cr := range linksChecked {
+		switch {
+		case cr.HTTPCode >= 500:
+			fives++
+		case cr.HTTPCode >= 400:
+			fours++
+		case cr.HTTPCode >= 300:
+			threes++
+		case cr.HTTPCode >= 200:
+			twos++
+		default:
+			errors++
+		}
+	}
+
+	dur := time.Since(start)
+	log.Printf("Duration: %.0fs", dur.Seconds())
+	log.Printf("Results 500s: %d 400s: %d 300s: %d 200s: %d Errors: %d",
+		fives, fours, threes, twos, errors)
+
+	if fives+fours+threes+errors > 0 {
+		os.Exit(1)
+	}
 }
 
 // recurse parses the html passed for urls, it takes the referrer link
