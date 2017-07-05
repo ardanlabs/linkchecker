@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sync"
 	"time"
 )
 
@@ -16,9 +17,11 @@ type CheckResult struct {
 	HTTPCode int
 	Referrer string
 	Error    error
+	Body     string
+	Recursed bool
 }
 
-var linksChecked map[string]CheckResult
+var linksChecked map[string]*CheckResult
 var host string
 
 func main() {
@@ -30,22 +33,23 @@ func main() {
 	log.Println("Checking:", link)
 
 	// Map that will hold all the link results.
-	linksChecked = make(map[string]CheckResult)
+	linksChecked = make(map[string]*CheckResult)
 
 	// Download the root page.
 	start := time.Now()
-	err, b, _ := download(link)
-	if err != nil {
-		log.Fatal(err)
-		return
+	cr := download("", link)
+	if cr.Error != nil {
+		log.Fatal(cr.Error)
 	}
+	linksChecked[link] = cr
 
 	// Recurse through the rest of the site.
-	recurse(link, b)
+	recurse(link, cr.Body)
 
 	// Summarize results.
+	log.Println("--------------------------------------------------------------")
 	var fives, fours, threes, twos, errors int
-	for _, cr := range linksChecked {
+	for link, cr := range linksChecked {
 		switch {
 		case cr.HTTPCode >= 500:
 			fives++
@@ -58,9 +62,15 @@ func main() {
 		default:
 			errors++
 		}
+
+		if cr.HTTPCode < 200 || cr.HTTPCode > 299 {
+			// Log the errors again at the bottom for convience.
+			log.Printf("Referrer: %s Link: %s HTTPCode: %d\n", cr.Referrer, link, cr.HTTPCode)
+		}
 	}
 
 	dur := time.Since(start)
+	log.Println("--------------------------------------------------------------")
 	log.Printf("Duration: %.0fs", dur.Seconds())
 	log.Printf("Results 500s: %d 400s: %d 300s: %d 200s: %d Errors: %d",
 		fives, fours, threes, twos, errors)
@@ -76,30 +86,46 @@ func recurse(link, html string) {
 	// Parse all the links from the html
 	ls := parseLinks(link, html)
 
-	// Loop through all the links and download. Recurse again if html.
+	// Loop through all the links and download asynchronously.
+	var wg sync.WaitGroup
+	var mutex = &sync.Mutex{}
 	for _, l := range ls {
 
 		// If link not already checked, download.
 		if _, ok := linksChecked[l]; !ok {
-			err, b, status := download(l)
-			cr := CheckResult{
-				HTTPCode: status,
-				Referrer: link,
-				Error:    err,
-			}
-			linksChecked[l] = cr
 
-			log.Printf("Referrer: %s Link: %s HTTPCode: %d\n", link, l, status)
+			// Download in a new routine.
+			wg.Add(1)
+			go func(referrer, link string) {
+				defer wg.Done()
+				cr := download(referrer, link)
 
-			// If image don't recurse, continue to next link	.
-			if isImage(l) {
-				continue
-			}
+				// Write result to links checked map.
+				mutex.Lock()
+				linksChecked[link] = cr
+				mutex.Unlock()
 
-			// If link on host being checked then recurse through.
+				log.Printf("Referrer: %s Link: %s HTTPCode: %d\n", cr.Referrer, link, cr.HTTPCode)
+			}(link, l)
+		}
+	}
+	wg.Wait()
+
+	linksChecked[link].Recursed = true
+
+	// Loop through the downloaded links and recurse
+	for _, l := range ls {
+		// If image don't recurse, continue to next link.
+		if isImage(l) {
+			continue
+		}
+
+		// If the link has not been recursed yet and for current host
+		// then recurse through it.
+		if !linksChecked[l].Recursed {
 			r := fmt.Sprintf("http(s)?://(www\\.)?" + host + ".*")
 			if found, _ := regexp.Match(r, []byte(l)); found {
-				recurse(l, b)
+				recurse(l, linksChecked[l].Body)
 			}
 		}
 	}
@@ -115,25 +141,32 @@ func isImage(url string) bool {
 
 // download gets the url passed returns an error or the html
 // and the status code.
-func download(url string) (error, string, int) {
-	response, err := http.Get(url)
+func download(referrer, url string) *CheckResult {
+	cr := &CheckResult{Referrer: referrer}
+
+	client := http.Client{Timeout: time.Duration(15 * time.Second)}
+	response, err := client.Get(url)
 	if err != nil {
-		return err, "", 0
+		cr.Error = err
+		return cr
 	}
+	cr.HTTPCode = response.StatusCode
 
 	// If image don't download body.
 	if isImage(url) {
-		return nil, "", response.StatusCode
+		return cr
 	}
 
 	// Download html body.
 	defer response.Body.Close()
 	b, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return err, "", 0
+		cr.Error = err
+		return cr
 	}
+	cr.Body = string(b)
 
-	return nil, string(b), response.StatusCode
+	return cr
 }
 
 // parseLinks parses html s for urls and returns them as a slice.
