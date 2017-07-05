@@ -144,7 +144,7 @@ func isImage(url string) bool {
 func download(referrer, url string) *CheckResult {
 	cr := &CheckResult{Referrer: referrer}
 
-	client := http.Client{Timeout: time.Duration(15 * time.Second)}
+	client := http.Client{Timeout: time.Duration(5 * time.Second)}
 	response, err := client.Get(url)
 	if err != nil {
 		cr.Error = err
