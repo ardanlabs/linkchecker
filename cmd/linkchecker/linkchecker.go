@@ -65,7 +65,11 @@ func main() {
 
 		if cr.HTTPCode < 200 || cr.HTTPCode > 299 {
 			// Log the errors again at the bottom for convience.
-			log.Printf("Referrer: %s Link: %s HTTPCode: %d\n", cr.Referrer, link, cr.HTTPCode)
+			var errStr string
+			if cr.Error != nil {
+				errStr = cr.Error.Error()
+			}
+			log.Printf("Referrer: %s Link: %s HTTPCode: %d %s\n", cr.Referrer, link, cr.HTTPCode, errStr)
 		}
 	}
 
@@ -116,7 +120,7 @@ func recurse(link, html string) {
 	// Loop through the downloaded links and recurse
 	for _, l := range ls {
 		// If image don't recurse, continue to next link.
-		if isImage(l) {
+		if !isHTML(l) {
 			continue
 		}
 
@@ -131,12 +135,12 @@ func recurse(link, html string) {
 	}
 }
 
-// isImage returns true if a url is for an image.
-func isImage(url string) bool {
-	if found, _ := regexp.Match("(jpg|svg|gif|png)$", []byte(url)); found {
-		return true
+// isHTML returns true if a url is for an image.
+func isHTML(url string) bool {
+	if found, _ := regexp.Match("(jpg|svg|gif|png|js)(\\?.*)?$", []byte(url)); found {
+		return false
 	}
-	return false
+	return true
 }
 
 // download gets the url passed returns an error or the html
@@ -152,8 +156,8 @@ func download(referrer, url string) *CheckResult {
 	}
 	cr.HTTPCode = response.StatusCode
 
-	// If image don't download body.
-	if isImage(url) {
+	// If image or js don't download body.
+	if !isHTML(url) {
 		return cr
 	}
 
@@ -178,17 +182,25 @@ func parseLinks(link, s string) []string {
 	var links []string
 
 	// Get anything that looks like an absolute url.
-	r := regexp.MustCompile("('|\")http(s)?://[^\"']*\"")
-	for _, l := range r.FindAllString(s, -1) {
-		nl := l[1 : len(l)-1]
-		links = append(links, nl)
+	r := regexp.MustCompile("(src|href)=('|\")(?P<url>http(s)?://[^\"']*)('|\")")
+	for _, l := range r.FindAllSubmatch([]byte(s), -1) {
+		links = append(links, string(l[3]))
 	}
 
 	// Get anything that looks like a relative url.
 	// Add the hostname.
-	r = regexp.MustCompile("\"/[^\"]*\"")
-	for _, l := range r.FindAllString(s, -1) {
-		nl := l[1 : len(l)-1]
+	r = regexp.MustCompile("(src|href)=('|\")(?P<url>/[^\"']*)('|\")")
+	for _, l := range r.FindAllSubmatch([]byte(s), -1) {
+		nl := string(l[3])
+
+		// If starts with // then use the same scheme but not really
+		// a relative link.
+		if len(nl) > 1 && string(nl[0:2]) == "//" {
+			links = append(links, u.Scheme+":"+nl)
+			continue
+		}
+
+		// Relative link use the same scheme and host.
 		links = append(links, u.Scheme+"://"+u.Host+nl)
 	}
 
