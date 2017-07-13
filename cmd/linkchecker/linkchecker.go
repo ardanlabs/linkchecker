@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -22,9 +21,17 @@ type CheckResult struct {
 	Recursed bool
 }
 
-var linksChecked map[string]*CheckResult
-var host string
-var timeout int
+var (
+	linksChecked map[string]*CheckResult
+	host         string
+	timeout      int
+
+	// Compiled regular expressions to use.
+	reImage       *regexp.Regexp
+	reCurrentHost *regexp.Regexp
+	reURLAbsolute *regexp.Regexp
+	reURLRelative *regexp.Regexp
+)
 
 func main() {
 	flag.StringVar(&host, "host", "", "Hostname and port of site to check.")
@@ -37,6 +44,12 @@ func main() {
 
 	// Map that will hold all the link results.
 	linksChecked = make(map[string]*CheckResult)
+
+	// Compile regular expressions to be used.
+	reCurrentHost = regexp.MustCompile("http(s)?://(www\\.)?" + host + ".*")
+	reImage = regexp.MustCompile("(jpg|svg|gif|png|js)(\\?.*)?$")
+	reURLAbsolute = regexp.MustCompile("(src|href)=('|\")(?P<url>http(s)?://[^\"']*)('|\")")
+	reURLRelative = regexp.MustCompile("(src|href)=('|\")(?P<url>/[^\"']*)('|\")")
 
 	// Download the root page.
 	start := time.Now()
@@ -98,23 +111,24 @@ func recurse(link, html string) {
 	var mutex = &sync.Mutex{}
 	for _, l := range ls {
 
-		// If link not already checked, download.
-		if _, ok := linksChecked[l]; !ok {
-
-			// Download in a new routine.
-			wg.Add(1)
-			go func(referrer, link string) {
-				defer wg.Done()
-				cr := download(referrer, link)
-
-				// Write result to links checked map.
-				mutex.Lock()
-				linksChecked[link] = cr
-				mutex.Unlock()
-
-				log.Printf("Referrer: %s Link: %s HTTPCode: %d\n", cr.Referrer, link, cr.HTTPCode)
-			}(link, l)
+		// If link already checked continue.
+		if _, ok := linksChecked[l]; ok {
+			continue
 		}
+
+		// Download in a new routine.
+		wg.Add(1)
+		go func(referrer, link string) {
+			defer wg.Done()
+			cr := download(referrer, link)
+
+			// Write result to links checked map.
+			mutex.Lock()
+			linksChecked[link] = cr
+			mutex.Unlock()
+
+			log.Printf("Referrer: %s Link: %s HTTPCode: %d\n", cr.Referrer, link, cr.HTTPCode)
+		}(link, l)
 	}
 	wg.Wait()
 
@@ -130,8 +144,7 @@ func recurse(link, html string) {
 		// If the link has not been recursed yet and for current host
 		// then recurse through it.
 		if !linksChecked[l].Recursed {
-			r := fmt.Sprintf("http(s)?://(www\\.)?" + host + ".*")
-			if found, _ := regexp.Match(r, []byte(l)); found {
+			if reCurrentHost.Match([]byte(l)) {
 				recurse(l, linksChecked[l].Body)
 			}
 		}
@@ -140,7 +153,7 @@ func recurse(link, html string) {
 
 // isHTML returns true if a url is for an image.
 func isHTML(url string) bool {
-	if found, _ := regexp.Match("(jpg|svg|gif|png|js)(\\?.*)?$", []byte(url)); found {
+	if reImage.Match([]byte(url)) {
 		return false
 	}
 	return true
@@ -194,15 +207,13 @@ func parseLinks(link, s string) []string {
 	var links []string
 
 	// Get anything that looks like an absolute url.
-	r := regexp.MustCompile("(src|href)=('|\")(?P<url>http(s)?://[^\"']*)('|\")")
-	for _, l := range r.FindAllSubmatch([]byte(s), -1) {
+	for _, l := range reURLAbsolute.FindAllSubmatch([]byte(s), -1) {
 		links = append(links, string(l[3]))
 	}
 
 	// Get anything that looks like a relative url.
 	// Add the hostname.
-	r = regexp.MustCompile("(src|href)=('|\")(?P<url>/[^\"']*)('|\")")
-	for _, l := range r.FindAllSubmatch([]byte(s), -1) {
+	for _, l := range reURLRelative.FindAllSubmatch([]byte(s), -1) {
 		nl := string(l[3])
 
 		// If starts with // then use the same scheme but not really
