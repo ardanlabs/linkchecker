@@ -24,9 +24,11 @@ type CheckResult struct {
 
 var linksChecked map[string]*CheckResult
 var host string
+var timeout int
 
 func main() {
 	flag.StringVar(&host, "host", "", "Hostname and port of site to check.")
+	flag.IntVar(&timeout, "timeout", 5, "Timeout in seconds.")
 	flag.Parse()
 
 	// Just add http:// to the host name and go.
@@ -149,7 +151,7 @@ func isHTML(url string) bool {
 func download(referrer, url string) *CheckResult {
 	cr := &CheckResult{Referrer: referrer}
 
-	client := http.Client{Timeout: time.Duration(5 * time.Second)}
+	client := http.Client{Timeout: time.Duration(timeout) * time.Second}
 
 	// If image or js don't download body.
 	if !isHTML(url) {
