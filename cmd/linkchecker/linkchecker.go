@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -149,23 +150,32 @@ func download(referrer, url string) *CheckResult {
 	cr := &CheckResult{Referrer: referrer}
 
 	client := http.Client{Timeout: time.Duration(5 * time.Second)}
+
+	// If image or js don't download body.
+	if !isHTML(url) {
+		response, err := client.Head(url)
+		if err != nil {
+			cr.Error = errors.New("Error getting header: " + err.Error())
+			return cr
+		}
+
+		cr.HTTPCode = response.StatusCode
+		return cr
+	}
+
+	// Download HTML.
 	response, err := client.Get(url)
 	if err != nil {
-		cr.Error = err
+		cr.Error = errors.New("Error getting header: " + err.Error())
 		return cr
 	}
 	cr.HTTPCode = response.StatusCode
 
-	// If image or js don't download body.
-	if !isHTML(url) {
-		return cr
-	}
-
-	// Download html body.
+	// Download HTML body.
 	defer response.Body.Close()
 	b, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		cr.Error = err
+		cr.Error = errors.New("Error downloading: " + err.Error())
 		return cr
 	}
 	cr.Body = string(b)
