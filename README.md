@@ -19,4 +19,16 @@ Run make to build and run locally and test against `www.ardanstudios.com`.
 make run
 ```
 
+# Docker
 
+To build and upload a Docker image to quay.io use the make command.
+
+```
+make docker
+```
+
+You can run the `linkchecker` from Docker like so.
+
+```
+docker run --rm -e HOST=www.ardanlabs.com quay.io/ardanlabs/linkchecker
+```
