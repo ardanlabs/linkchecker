@@ -4,6 +4,7 @@ RUN apk add --update bash ca-certificates \
   && rm -rf /var/cache/apk/*
 
 COPY cmd/linkchecker /usr/local/bin
+COPY .linkignore .linkignore
 
 ENV TIMEOUT=20
 

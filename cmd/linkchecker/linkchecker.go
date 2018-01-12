@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"io/ioutil"
@@ -28,6 +29,7 @@ var (
 
 	// Compiled regular expressions to use.
 	reImage       *regexp.Regexp
+	reURL         *regexp.Regexp
 	reCurrentHost *regexp.Regexp
 	reURLAbsolute *regexp.Regexp
 	reURLRelative *regexp.Regexp
@@ -47,9 +49,39 @@ func main() {
 
 	// Compile regular expressions to be used.
 	reCurrentHost = regexp.MustCompile("http(s)?://(www\\.)?" + host + ".*")
+	reURL = regexp.MustCompile("http(s)?://.*")
 	reImage = regexp.MustCompile("(jpg|svg|gif|png|js)(\\?.*)?$")
 	reURLAbsolute = regexp.MustCompile("(src|href)=('|\")(?P<url>http(s)?://[^\"']*)('|\")")
 	reURLRelative = regexp.MustCompile("(src|href)=('|\")(?P<url>/[^\"']*)('|\")")
+
+	// If .linkignore file exists add links to checked result.
+	if _, err := os.Stat(".linkignore"); err == nil {
+		func(links map[string]*CheckResult) {
+			file, err := os.Open(".linkignore")
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer file.Close()
+
+			// Read each line from file into a check result.
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				line := scanner.Text()
+
+				cr := &CheckResult{
+					Referrer: "Ignored",
+					HTTPCode: 100,
+				}
+
+				// If URL doesn't include http(s) then add domain.
+				if !reURL.Match([]byte(line)) {
+					line = link + line
+				}
+
+				links[line] = cr
+			}
+		}(linksChecked)
+	}
 
 	// Download the root page.
 	start := time.Now()
@@ -64,7 +96,7 @@ func main() {
 
 	// Summarize results.
 	log.Println("--------------------------------------------------------------")
-	var fives, fours, threes, twos, errors int
+	var fives, fours, threes, twos, ones, errors int
 	for link, cr := range linksChecked {
 		switch {
 		case cr.HTTPCode >= 500:
@@ -75,6 +107,8 @@ func main() {
 			threes++
 		case cr.HTTPCode >= 200:
 			twos++
+		case cr.HTTPCode >= 100:
+			ones++
 		default:
 			errors++
 		}
@@ -92,8 +126,8 @@ func main() {
 	dur := time.Since(start)
 	log.Println("--------------------------------------------------------------")
 	log.Printf("Duration: %.0fs", dur.Seconds())
-	log.Printf("Results 500s: %d 400s: %d 300s: %d 200s: %d Errors: %d",
-		fives, fours, threes, twos, errors)
+	log.Printf("Results 500s: %d 400s: %d 300s: %d 200s: %d Errors: %d Ignored: %d",
+		fives, fours, threes, twos, errors, ones)
 
 	if fives+fours+threes+errors > 0 {
 		os.Exit(1)
