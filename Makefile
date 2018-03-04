@@ -13,4 +13,5 @@ docker:
 	docker build -t "quay.io/ardanlabs/linkchecker" .
 	docker push "quay.io/ardanlabs/linkchecker"
 
-
+build-linux:
+	cd cmd/linkchecker && GOOS=linux go build
