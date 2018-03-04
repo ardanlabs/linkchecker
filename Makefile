@@ -14,4 +14,4 @@ docker:
 	docker push "quay.io/ardanlabs/linkchecker"
 
 build-linux:
-	cd cmd/linkchecker && GOOS=linux go build
+	cd cmd/linkchecker && GOOS=linux CGO_ENABLED=0 go build
