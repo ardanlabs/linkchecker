@@ -243,6 +243,7 @@ func download(referrer, url string) *CheckResult {
 			continue
 		}
 		cr.Body = string(b)
+		break
 	}
 
 	return cr
