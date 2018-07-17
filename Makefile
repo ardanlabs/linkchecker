@@ -2,11 +2,7 @@ build:
 	cd cmd/linkchecker && go build
 
 run: build
-	cmd/linkchecker/linkchecker -host=www.ardanstudios.com
-
-deploy:
-	cd cmd/linkchecker && GOOS=linux go build
-	cd cmd/linkchecker && scp -P 22227 linkchecker server_user@ci.ardanstudios.com:
+	cmd/linkchecker/linkchecker -host=www.ardanlabs.com
 
 docker:
 	cd cmd/linkchecker && GOOS=linux go build

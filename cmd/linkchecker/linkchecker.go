@@ -96,6 +96,19 @@ func main() {
 
 	// Summarize results.
 	log.Println("--------------------------------------------------------------")
+	log.Println("These links where ignored.")
+	for link, cr := range linksChecked {
+		if cr.HTTPCode == 100 {
+			// Log the errors again at the bottom for convience.
+			var errStr string
+			if cr.Error != nil {
+				errStr = cr.Error.Error()
+			}
+			log.Printf("Referrer: %s Link: %s HTTPCode: %d %s\n", cr.Referrer, link, cr.HTTPCode, errStr)
+		}
+	}
+	log.Println("--------------------------------------------------------------")
+	log.Println("These links didn't check out.")
 	var fives, fours, threes, twos, ones, errors int
 	for link, cr := range linksChecked {
 		switch {
@@ -113,7 +126,7 @@ func main() {
 			errors++
 		}
 
-		if cr.HTTPCode < 200 || cr.HTTPCode > 299 {
+		if cr.HTTPCode > 299 {
 			// Log the errors again at the bottom for convience.
 			var errStr string
 			if cr.Error != nil {
@@ -213,21 +226,24 @@ func download(referrer, url string) *CheckResult {
 	}
 
 	// Download HTML.
-	response, err := client.Get(url)
-	if err != nil {
-		cr.Error = errors.New("Error getting header: " + err.Error())
-		return cr
-	}
-	cr.HTTPCode = response.StatusCode
+	retries := 3
+	for ; retries > 0; retries-- {
+		response, err := client.Get(url)
+		if err != nil {
+			cr.Error = errors.New("Error getting header: " + err.Error())
+			continue
+		}
+		cr.HTTPCode = response.StatusCode
 
-	// Download HTML body.
-	defer response.Body.Close()
-	b, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		cr.Error = errors.New("Error downloading: " + err.Error())
-		return cr
+		// Download HTML body.
+		defer response.Body.Close()
+		b, err := ioutil.ReadAll(response.Body)
+		if err != nil {
+			cr.Error = errors.New("Error downloading: " + err.Error())
+			continue
+		}
+		cr.Body = string(b)
 	}
-	cr.Body = string(b)
 
 	return cr
 }
