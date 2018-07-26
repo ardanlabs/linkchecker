@@ -126,7 +126,9 @@ func main() {
 			errors++
 		}
 
-		if cr.HTTPCode > 299 {
+		// Anything above 299 is an HTTP error code. If there is an problem connecting
+		// HTTPCode will be 0.
+		if cr.HTTPCode > 299 || cr.HTTPCode == 0 {
 			// Log the errors again at the bottom for convience.
 			var errStr string
 			if cr.Error != nil {
