@@ -28,11 +28,11 @@ var (
 	timeout      int
 
 	// Compiled regular expressions to use.
-	reImage       *regexp.Regexp
-	reURL         *regexp.Regexp
 	reCurrentHost *regexp.Regexp
-	reURLAbsolute *regexp.Regexp
-	reURLRelative *regexp.Regexp
+	reURL         = regexp.MustCompile("http(s)?://.*")
+	reImage       = regexp.MustCompile("(jpg|svg|gif|png|js)(\\?.*)?$")
+	reURLAbsolute = regexp.MustCompile("(src|href)=('|\")?(?P<url>http(s)?://[^\"'>]*)('|\")?")
+	reURLRelative = regexp.MustCompile("(src|href)=('|\")?(?P<url>/[^\"'>]*)('|\")?")
 )
 
 func main() {
@@ -46,13 +46,9 @@ func main() {
 
 	// Map that will hold all the link results.
 	linksChecked = make(map[string]*CheckResult)
+	reCurrentHost = regexp.MustCompile("http(s)?://(www\\.)?" + host + ".*")
 
 	// Compile regular expressions to be used.
-	reCurrentHost = regexp.MustCompile("http(s)?://(www\\.)?" + host + ".*")
-	reURL = regexp.MustCompile("http(s)?://.*")
-	reImage = regexp.MustCompile("(jpg|svg|gif|png|js)(\\?.*)?$")
-	reURLAbsolute = regexp.MustCompile("(src|href)=('|\")(?P<url>http(s)?://[^\"']*)('|\")")
-	reURLRelative = regexp.MustCompile("(src|href)=('|\")(?P<url>/[^\"']*)('|\")")
 
 	// If .linkignore file exists add links to checked result.
 	if _, err := os.Stat(".linkignore"); err == nil {
