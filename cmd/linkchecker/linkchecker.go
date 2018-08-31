@@ -31,8 +31,8 @@ var (
 	reCurrentHost *regexp.Regexp
 	reURL         = regexp.MustCompile("http(s)?://.*")
 	reImage       = regexp.MustCompile("(jpg|svg|gif|png|js)(\\?.*)?$")
-	reURLAbsolute = regexp.MustCompile("(src|href)=('|\")?(?P<url>http(s)?://[^\"'>]*)('|\")?")
-	reURLRelative = regexp.MustCompile("(src|href)=('|\")?(?P<url>/[^\"'>]*)('|\")?")
+	reURLAbsolute = regexp.MustCompile("(src|href)=('|\")?(?P<url>http(s)?://[^\"'> ]*)('|\")?")
+	reURLRelative = regexp.MustCompile("(src|href)=('|\")?(?P<url>/[^\"'> ]*)('|\")?")
 )
 
 func main() {

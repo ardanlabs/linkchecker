@@ -11,3 +11,6 @@ docker:
 
 build-linux:
 	cd cmd/linkchecker && GOOS=linux CGO_ENABLED=0 go build
+
+test:
+	go test -v ./...
