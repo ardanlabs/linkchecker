@@ -26,7 +26,7 @@ type CheckResult struct {
 var (
 	linksChecked map[string]*CheckResult
 	host         string
-	tlsVerify    string
+	skipTLS      bool
 	timeout      int
 
 	// Compiled regular expressions to use.
@@ -39,7 +39,7 @@ var (
 
 func main() {
 	flag.StringVar(&host, "host", "", "Hostname and port of site to check.")
-	flag.StringVar(&tlsVerify, "tlsVerify", "true", "If you want to try site with invalid certificate, default: true")
+	flag.BoolVar(&skipTLS, "skiptls", false, "To try site with invalid certificate, default: false")
 	flag.IntVar(&timeout, "timeout", 5, "Timeout in seconds.")
 	flag.Parse()
 
@@ -211,8 +211,7 @@ func isHTML(url string) bool {
 // and the status code.
 func download(referrer, url string) *CheckResult {
 	cr := &CheckResult{Referrer: referrer}
-
-	if tlsVerify == "false" {
+	if skipTLS {
 		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 
