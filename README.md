@@ -10,6 +10,11 @@ Run and provide a host.
 ```
 ./linkchecker -host=www.ardanstudios.com
 ```
+Run against host without valid certificate
+
+```
+./linkchecker -host=www.ardanstudios.com -skiptls
+```
 
 # Developing
 
