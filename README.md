@@ -13,7 +13,7 @@ Run and provide a host.
 Run against host without valid certificate
 
 ```
-./linkchecker -host=www.ardanstudios.com -tlsVerify=false 
+./linkchecker -host=www.ardanstudios.com -skiptls
 ```
 
 # Developing
