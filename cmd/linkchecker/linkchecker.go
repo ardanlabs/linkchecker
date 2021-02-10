@@ -51,8 +51,8 @@ func main() {
 	reCurrentHost = regexp.MustCompile("http(s)?://(www\\.)?" + host + ".*")
 	reURL = regexp.MustCompile("http(s)?://.*")
 	reImage = regexp.MustCompile("(jpg|svg|gif|png|js)(\\?.*)?$")
-	reURLAbsolute = regexp.MustCompile("(src|href)=('|\")(?P<url>http(s)?://[^\"']*)('|\")")
-	reURLRelative = regexp.MustCompile("(src|href)=('|\")(?P<url>/[^\"']*)('|\")")
+	reURLAbsolute = regexp.MustCompile("(src|href)=('|\")?(?P<url>http(s)?://[^\"'> ]*)('|\")?")
+	reURLRelative = regexp.MustCompile("(src|href)=('|\")?(?P<url>/[^\"'> ]*)('|\")?")
 
 	// If .linkignore file exists add links to checked result.
 	if _, err := os.Stat(".linkignore"); err == nil {
@@ -144,6 +144,7 @@ func recurse(link, html string) {
 	var wg sync.WaitGroup
 	var mutex = &sync.Mutex{}
 	for _, l := range ls {
+		time.Sleep(500)
 
 		// If link already checked continue.
 		if _, ok := linksChecked[l]; ok {
@@ -198,7 +199,9 @@ func isHTML(url string) bool {
 func download(referrer, url string) *CheckResult {
 	cr := &CheckResult{Referrer: referrer}
 
-	client := http.Client{Timeout: time.Duration(timeout) * time.Second}
+	client := http.Client{
+		Timeout: time.Duration(timeout) * time.Second,
+	}
 
 	// If image or js don't download body.
 	if !isHTML(url) {
@@ -213,16 +216,24 @@ func download(referrer, url string) *CheckResult {
 	}
 
 	// Download HTML.
-	response, err := client.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		cr.Error = errors.New("Error getting header: " + err.Error())
+		cr.Error = errors.New("Error creating request : " + err.Error())
 		return cr
 	}
-	cr.HTTPCode = response.StatusCode
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		cr.Error = errors.New("Error doing request : " + err.Error())
+		return cr
+	}
+	defer resp.Body.Close()
+	cr.HTTPCode = resp.StatusCode
 
 	// Download HTML body.
-	defer response.Body.Close()
-	b, err := ioutil.ReadAll(response.Body)
+	b, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		cr.Error = errors.New("Error downloading: " + err.Error())
 		return cr

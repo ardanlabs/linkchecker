@@ -2,7 +2,7 @@ build:
 	cd cmd/linkchecker && go build
 
 run: build
-	cmd/linkchecker/linkchecker -host=www.ardanstudios.com
+	cmd/linkchecker/linkchecker -host=www.ardanlabs.com -timeout=30
 
 deploy:
 	cd cmd/linkchecker && GOOS=linux go build
