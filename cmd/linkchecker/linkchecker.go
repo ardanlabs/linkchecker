@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/tls"
 	"errors"
 	"flag"
 	"io/ioutil"
@@ -25,18 +26,20 @@ type CheckResult struct {
 var (
 	linksChecked map[string]*CheckResult
 	host         string
+	skipTLS      bool
 	timeout      int
 
 	// Compiled regular expressions to use.
-	reImage       *regexp.Regexp
-	reURL         *regexp.Regexp
 	reCurrentHost *regexp.Regexp
-	reURLAbsolute *regexp.Regexp
-	reURLRelative *regexp.Regexp
+	reURL         = regexp.MustCompile("http(s)?://.*")
+	reImage       = regexp.MustCompile("(jpg|svg|gif|png|js)(\\?.*)?$")
+	reURLAbsolute = regexp.MustCompile("(src|href)=('|\")?(?P<url>http(s)?://[^\"'> ]*)('|\")?")
+	reURLRelative = regexp.MustCompile("(src|href)=('|\")?(?P<url>/[^\"'> ]*)('|\")?")
 )
 
 func main() {
 	flag.StringVar(&host, "host", "", "Hostname and port of site to check.")
+	flag.BoolVar(&skipTLS, "skiptls", false, "To try site with invalid certificate, default: false")
 	flag.IntVar(&timeout, "timeout", 5, "Timeout in seconds.")
 	flag.Parse()
 
@@ -96,6 +99,19 @@ func main() {
 
 	// Summarize results.
 	log.Println("--------------------------------------------------------------")
+	log.Println("These links where ignored.")
+	for link, cr := range linksChecked {
+		if cr.HTTPCode == 100 {
+			// Log the errors again at the bottom for convience.
+			var errStr string
+			if cr.Error != nil {
+				errStr = cr.Error.Error()
+			}
+			log.Printf("Referrer: %s Link: %s HTTPCode: %d %s\n", cr.Referrer, link, cr.HTTPCode, errStr)
+		}
+	}
+	log.Println("--------------------------------------------------------------")
+	log.Println("These links didn't check out.")
 	var fives, fours, threes, twos, ones, errors int
 	for link, cr := range linksChecked {
 		switch {
@@ -113,7 +129,9 @@ func main() {
 			errors++
 		}
 
-		if cr.HTTPCode < 200 || cr.HTTPCode > 299 {
+		// Anything above 299 is an HTTP error code. If there is an problem connecting
+		// HTTPCode will be 0.
+		if cr.HTTPCode > 299 || cr.HTTPCode == 0 {
 			// Log the errors again at the bottom for convience.
 			var errStr string
 			if cr.Error != nil {
@@ -198,6 +216,9 @@ func isHTML(url string) bool {
 // and the status code.
 func download(referrer, url string) *CheckResult {
 	cr := &CheckResult{Referrer: referrer}
+	if skipTLS {
+		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
 
 	client := http.Client{
 		Timeout: time.Duration(timeout) * time.Second,
@@ -224,21 +245,25 @@ func download(referrer, url string) *CheckResult {
 
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36")
 
-	resp, err := client.Do(req)
-	if err != nil {
-		cr.Error = errors.New("Error doing request : " + err.Error())
-		return cr
-	}
-	defer resp.Body.Close()
-	cr.HTTPCode = resp.StatusCode
+	retries := 3
+	for ; retries > 0; retries-- {
+		resp, err := client.Do(req)
+		if err != nil {
+			cr.Error = errors.New("Error doing request : " + err.Error())
+			return cr
+		}
+		defer resp.Body.Close()
+		cr.HTTPCode = resp.StatusCode
 
-	// Download HTML body.
-	b, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		cr.Error = errors.New("Error downloading: " + err.Error())
-		return cr
+		// Download HTML body.
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			cr.Error = errors.New("Error downloading: " + err.Error())
+			continue
+		}
+		cr.Body = string(b)
+		break
 	}
-	cr.Body = string(b)
 
 	return cr
 }
